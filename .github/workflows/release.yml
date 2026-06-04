@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "CHANGELOG.md"
+      - "pyproject.toml"   # avoid re-triggering on version bump commits
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1. Determine next version without committing anything
+  # -------------------------------------------------------------------------
+  next-version:
+    name: Determine next version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      new_version: ${{ steps.semver.outputs.version }}
+      release_notes: ${{ steps.semver.outputs.release_notes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+
+      - name: Compute next version (dry run)
+        id: semver
+        run: |
+          set -euo pipefail
+          OUTPUT=$(uv run semantic-release version --print --no-commit --no-tag --no-push)
+          echo "version=$OUTPUT" >> "$GITHUB_OUTPUT"
+          # Release notes = conventional-commit subjects since the last tag.
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          RANGE="HEAD"
+          [ -n "$PREV_TAG" ] && RANGE="${PREV_TAG}..HEAD"
+          NOTES=$(git log --no-merges --pretty=format:'- %s (%h)' "$RANGE")
+          {
+            echo "release_notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  # -------------------------------------------------------------------------
+  # 2. Open a PR that bumps the version + updates CHANGELOG
+  #    This PR, when merged, triggers the actual publish job (see job 3)
+  # -------------------------------------------------------------------------
+  open-release-pr:
+    name: Open version-bump PR
+    needs: next-version
+    if: needs.next-version.outputs.new_version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create release branch & apply version bump
+        env:
+          NEW_VERSION: ${{ needs.next-version.outputs.new_version }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v${NEW_VERSION}"
+          # Run semantic-release on main (the only configured release branch) so
+          # it actually applies the bump + changelog, then carry the uncommitted
+          # changes onto a new release branch for the PR.
+          uv run semantic-release version \
+            --no-commit --no-tag --no-push
+          git checkout -b "$BRANCH"
+          git add pyproject.toml CHANGELOG.md
+          git commit -m "chore(release): bump to v${NEW_VERSION}"
+          git push origin "$BRANCH"
+
+      - name: Open PR into main
+        env:
+          NEW_VERSION: ${{ needs.next-version.outputs.new_version }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_NOTES: ${{ needs.next-version.outputs.release_notes }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v${NEW_VERSION}"
+          # Ensure the label exists (gh pr create fails on an unknown label).
+          gh label create release --description "Automated release PR" --color 0e8a16 --force >/dev/null 2>&1 || true
+          # Idempotent: if a release PR is already open for this branch, the
+          # force-push above already updated it — don't try to create a duplicate.
+          if [ -n "$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')" ]; then
+            echo "Release PR for $BRANCH already open; updated via force-push."
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore(release): v${NEW_VERSION}" \
+              --body "$RELEASE_NOTES" \
+              --label "release"
+          fi
+
+  # -------------------------------------------------------------------------
+  # 3. When the release PR is merged, tag + publish
+  #    Detected by: commit message starts with "chore(release):"
+  # -------------------------------------------------------------------------
+  publish:
+    name: Tag & Publish
+    runs-on: ubuntu-latest
+    # NOTE: `pypi` is a GitHub Environment with required reviewers / branch
+    # protection rules. Configure it under Settings → Environments before
+    # enabling PyPI publishing below.
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write          # for PyPI trusted publishing
+    if: |
+      github.event_name == 'push' &&
+      startsWith(github.event.head_commit.message, 'chore(release):')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+
+      - name: Tag release
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run semantic-release version \
+            --no-bump --no-commit --tag --push
+
+      - name: Build
+        run: uv build
+
+      - name: Publish to PyPI (optional — remove if not publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Remove the 'if: false' line to enable PyPI publishing
+        if: false
