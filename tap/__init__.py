@@ -1,4 +1,4 @@
-"""Traffic Simulator"""
+"""Traffic Simulator: some text to test release pr"""
 
 from importlib.metadata import version
 
