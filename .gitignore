@@ -31,6 +31,7 @@ wheels/
 .coverage.*
 coverage.xml
 htmlcov/
+other/
 
 # Type-checker daemons
 .dmypy.json

@@ -10,7 +10,10 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Antonios Mavrotas", email = "antoniosmavrotas@gmail.com" }]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "jax>=0.10.1",
+    "jaxtyping>=0.3.10",
+]
 
 [project.urls]
 Homepage = "https://github.com/Antonios-M/tap"
