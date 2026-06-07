@@ -13,6 +13,7 @@ requires-python = ">=3.13"
 dependencies = [
     "jax>=0.10.1",
     "jaxtyping>=0.3.10",
+    "numpy>=2.0",
 ]
 
 [project.urls]
@@ -50,6 +51,12 @@ select = [
   "RUF",      # ruff-specific
 ]
 ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+# jaxtyping shape strings (e.g. Float[Array, "2 E"], "E", "") are parsed by ruff as
+# forward references and flagged F722/F821, but they are not Python names/syntax.
+# `ty` still type-checks these modules for genuinely undefined names.
+"tap/**/*.py" = ["F722", "F821"]
 
 [tool.ruff.format]
 quote-style = "double"

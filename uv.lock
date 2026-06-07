@@ -929,6 +929,7 @@ source = { editable = "." }
 dependencies = [
     { name = "jax" },
     { name = "jaxtyping" },
+    { name = "numpy" },
 ]
 
 [package.dev-dependencies]
@@ -946,6 +947,7 @@ dev = [
 requires-dist = [
     { name = "jax", specifier = ">=0.10.1" },
     { name = "jaxtyping", specifier = ">=0.3.10" },
+    { name = "numpy", specifier = ">=2.0" },
 ]
 
 [package.metadata.requires-dev]
