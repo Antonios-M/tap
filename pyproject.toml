@@ -28,7 +28,7 @@ dev = [
   "ty>=0.0.1a8",
   "bandit[toml]>=1.8",
   "pre-commit>=4.0",
-  "python-semantic-release>=9.0",
+  "python-semantic-release==10.5.3",
 ]
 
 # ---------------------------------------------------------------------------
@@ -87,15 +87,33 @@ addopts = "--cov=tap --cov-report=term-missing --cov-fail-under=80"
 # ---------------------------------------------------------------------------
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
-branch = "main"
+build_command = "uv build"
+commit_message = "chore(release): v{version}"
 # Stay in the 0.x development series: allow 0.x versions (otherwise the first
 # release is forced to 1.0.0), and don't auto-promote 0.x -> 1.0.0 on a breaking
 # change. Cut 1.0.0 deliberately (e.g. `semantic-release version --major`).
 allow_zero_version = true
 major_on_zero = false
+
+[tool.semantic_release.branches.main]
+match = "^main$"
+
+[tool.semantic_release.changelog]
+mode = "update"
+insertion_flag = "<!-- version list -->"
+# Keep the changelog to user-facing changes; drop tooling/admin commits.
+exclude_commit_patterns = [
+  "^chore",
+  "^ci",
+  "^test",
+  "^style",
+  "^build",
+]
+
+[tool.semantic_release.changelog.default_templates]
 changelog_file = "CHANGELOG.md"
-build_command = "uv build"
-commit_message = "chore(release): v{version} [skip ci]"
+# List the actual commits in the first release instead of just "Initial Release".
+mask_initial_release = false
 
 [tool.semantic_release.commit_parser_options]
 # conventional commits: feat -> minor, fix -> patch, BREAKING -> major
